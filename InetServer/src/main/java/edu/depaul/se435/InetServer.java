@@ -31,24 +31,58 @@ class Worker extends Thread {
                 String name;
                 name = input.readLine();
                 System.out.println("Looking up: " + name);
-                // printRemoteAddress(name, output);
+                // pass name received from input to printRemoteAddress() function
+                printRemoteAddress(name, output);
 
-            }
-            catch (IOException exception){
+            } catch (IOException exception) {
                 System.out.println("Server read error");
                 exception.printStackTrace();
             }
             // close socket after returning remote address or catching an exception
             socket.close();
-        }
-        catch (IOException ioexception){
+        } catch (IOException ioexception) {
             System.out.println(ioexception);
+        }
+    }
+
+    static void printRemoteAddress(String name, PrintStream output) {
+        try {
+            output.println("Looking up: " + name + "...");
+            // check if we can resolve the name to get details about the hostname and IP address
+            // if it doesn't exist, an exception will be thrown back at the client
+            InetAddress host = InetAddress.getByName(name);
+            output.println("Hostname: " + host.getHostName());
+            output.println("Host IP: " + toText(host.getAddress()));
+        } catch (UnknownHostException exception) {
+            output.println("Failed to find hostname: " + name);
+        }
+    }
+
+    // IP address to text conversion
+    static String toText(byte ip[]) { /* Make portable for 128 bit format */
+        StringBuffer result = new StringBuffer();
+        for (int i = 0; i < ip.length; ++i) {
+            if (i > 0) result.append(".");
+            result.append(0xff & ip[i]);
+        }
+        return result.toString();
+    }
+}
+
+public class InetServer {
+    public static void main(String[] args) throws IOException {
+        final int queue_len = 6;
+        final int port = 8022;
+        Socket socket;
+
+        // create socket with queue length of 6 + listening on port#: 8022
+        ServerSocket serverSocket = new ServerSocket(queue_len, port);
+        System.out.println("Raquib Talukder's Inet server 1.8 starting up, listening on port 8022.\n" );
+
+        while (true) {
+            socket = serverSocket.accept();
+            new Worker(socket).run();
         }
 
     }
-
-}
-
-
-public class InetServer {
 }
