@@ -71,14 +71,15 @@ class Worker extends Thread {
 
 public class InetServer {
     public static void main(String[] args) throws IOException {
-        final int queue_len = 6;
-        final int port = 8022;
+        int port = 9999;
+        int queue_len = 6;
         Socket socket;
 
-        // create socket with queue length of 6 + listening on port#: 8022
-        ServerSocket serverSocket = new ServerSocket(queue_len, port);
-        System.out.println("Raquib Talukder's Inet server 1.8 starting up, listening on port 8022.\n" );
+        // create socket listening on port#: 9999 + queue length of 6
+        ServerSocket serverSocket = new ServerSocket(port, queue_len);
+        System.out.println("Raquib Talukder's Inet server 1.8 starting up, listening on port 9999.\n" );
 
+        // accept incoming coming connections and then pass them along to the worker class
         while (true) {
             socket = serverSocket.accept();
             new Worker(socket).run();

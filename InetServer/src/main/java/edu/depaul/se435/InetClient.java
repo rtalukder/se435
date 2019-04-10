@@ -9,12 +9,11 @@ import java.io.*;
 import java.net.*;
 
 public class InetClient {
-    final static int port = 8022;
-
     public static void main(String[] args) {
         // hostname of the server
         String hostname;
 
+        // if no arguments then use 'localhost' as server
         if (args.length < 1) {
             hostname = "localhost";
         }
@@ -23,7 +22,7 @@ public class InetClient {
         }
 
         System.out.println("Raquib Talukder's Inet Client v1.8 \n");
-        System.out.println("Using server: " + hostname + ":8022");
+        System.out.println("Using server: " + hostname + ":1565");
 
         // accepting user input from command line
         BufferedReader input = new BufferedReader((new InputStreamReader(System.in)));
@@ -34,12 +33,15 @@ public class InetClient {
                 // take in user input
                 System.out.print("Enter a hostname or an IP address, (quit) to end: ");
                 System.out.flush();
+
+                // input from user
                 name = input.readLine();
 
+                // if input is 'quit' - leave loop
                 if (!name.contains("quit")){
                     getRemoteAddess(name, hostname);
                 }
-            }
+            } // if input is 'quit' - leave loop
             while (!name.contains("quit")); {
                 System.out.println("Cancelled by user request.");
             }
@@ -56,8 +58,8 @@ public class InetClient {
         String textFromServer;
 
         try {
-            // open connection to server on port#: 8022
-            socket = new Socket(hostname, port);
+            // open connection to server on port#: 9999
+            socket = new Socket(hostname, 9999);
 
             // open input/output streams for socket to server
             fromServer = new BufferedReader(new InputStreamReader(socket.getInputStream()));
@@ -75,7 +77,6 @@ public class InetClient {
                     System.out.println(textFromServer);
                 }
             }
-
             // close socket once communication has completed or user ends session
             socket.close();
         }
