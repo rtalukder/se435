@@ -28,6 +28,7 @@ class Worker extends Thread {
             output = new PrintStream((socket.getOutputStream()));
 
             try {
+                // read line from input
                 String name;
                 name = input.readLine();
                 System.out.println("Looking up: " + name);
@@ -52,6 +53,7 @@ class Worker extends Thread {
             // if it doesn't exist, an exception will be thrown back at the client
             InetAddress host = InetAddress.getByName(name);
             output.println("Hostname: " + host.getHostName());
+            // return IP address - uses toText() function to convert to a string
             output.println("Host IP: " + toText(host.getAddress()));
         } catch (UnknownHostException exception) {
             output.println("Failed to find hostname: " + name);
