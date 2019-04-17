@@ -17,12 +17,13 @@ public class InetClient {
         if (args.length < 1) {
             hostname = "localhost";
         }
+        // server name is set to the argument given at the command line
         else{
             hostname = args[0];
         }
 
         System.out.println("Raquib Talukder's Inet Client v1.8 \n");
-        System.out.println("Using server: " + hostname + ":1565");
+        System.out.println("Using server: " + hostname + ":9999");
 
         // accepting user input from command line
         BufferedReader input = new BufferedReader((new InputStreamReader(System.in)));
