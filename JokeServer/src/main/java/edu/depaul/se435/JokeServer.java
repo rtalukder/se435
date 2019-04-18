@@ -54,15 +54,27 @@ class Worker extends Thread {
             output.println("Something failed");
         }
     }
+}
 
-    // IP address to text conversion
-    static String toText(byte ip[]) { /* Make portable for 128 bit format */
-        StringBuffer result = new StringBuffer();
-        for (int i = 0; i < ip.length; ++i) {
-            if (i > 0) result.append(".");
-            result.append(0xff & ip[i]);
+// create listener for admin client
+class AdminListener implements Runnable {
+    public void run() {
+        final int port = 21460;
+        final int queue_len = 6;
+        Socket socket;
+
+        try {
+            // admin client listening on port#: 21460
+            ServerSocket serverSocket = new ServerSocket(port, queue_len);
+
+            while (true) {
+                socket = serverSocket.accept();
+                new AdminWorker(socket).run();
+            }
+        } catch (IOException exception) {
+            System.out.println("Server error - can't open socket.");
+            exception.printStackTrace();
         }
-        return result.toString();
     }
 }
 
@@ -89,16 +101,18 @@ class AdminWorker extends Thread {
 
                 // receive line from admin client - pass it to the ServerMode function
                 serverMode = input.readLine();
+                System.out.println(serverMode);
                 ServerMode(serverMode, output);
 
-            } catch (IOException x) {
-                System.out.println("Server read error");
-                x.printStackTrace();
+            } catch (IOException exception) {
+                System.out.println("Server error - couldn't open socket");
+                exception.printStackTrace();
             }
             // close connection
             socket.close();
-        } catch (IOException ioe) {
-            System.out.println(ioe);
+        } catch (IOException exception) {
+            System.out.println("Server error - couldn't open up streams");
+            exception.printStackTrace();
         }
     }
 
@@ -116,20 +130,25 @@ class AdminWorker extends Thread {
 //                AdminLooper._serverMode = true;
                 break;
             default:
-                outputSocket.println("Not an option. Please select one from the list given. ");
+                outputSocket.println("Not an option. Please select one from the list given.");
                 break;
         }
     }
 }
 
+// main class to start listener for admin client + listener for client connections
 public class JokeServer {
     public static void main(String[] args) throws IOException {
-        int port = 9999;
-        int queue_len = 6;
+        final int port = 9999;
+        final int queue_len = 6;
         Socket socket;
 
         // create socket listening on port#: 21460 + queue length of 6
         // this socket is for admin clients
+        // must be ran on its own thread otherwise client code will never start
+        System.out.println("Starting the AdminClient, listening on port 24160 for administrators.\n");
+        Thread adminClientThread = new Thread(new AdminListener());
+        adminClientThread.start();
 
         // create socket listening on port#: 9999 + queue length of 6
         // this socket is for regular clients

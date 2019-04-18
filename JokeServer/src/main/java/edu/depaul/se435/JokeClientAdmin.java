@@ -35,7 +35,7 @@ public class JokeClientAdmin {
             String serverMode;
             do {
                 // take in user input
-                System.out.print("Select server mode: \n - Joke\n - Proverb \nadmin@~ $ ");
+                System.out.print("\nSelect server mode: \n - Joke\n - Proverb \nadmin@~ $ ");
                 System.out.flush();
 
                 // input from user
@@ -90,16 +90,6 @@ public class JokeClientAdmin {
             System.out.println("Socket error");
             exception.printStackTrace();
         }
-    }
-
-    // IP address to text conversion
-    static String toText(byte ip[]) { /* Make portable for 128 bit format */
-        StringBuffer result = new StringBuffer();
-        for (int i = 0; i < ip.length; ++i) {
-            if (i > 0) result.append(".");
-            result.append(0xff & ip[i]);
-        }
-        return result.toString();
     }
 }
 

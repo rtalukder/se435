@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintStream;
 import java.net.Socket;
+import java.util.UUID;
 
 /**
  * Class: SE435 - JokeClient
@@ -15,6 +16,9 @@ public class JokeClient {
     public static void main(String[] args) {
         // hostname of the server
         String hostname;
+        // generate UUID for each new client that's connected
+        UUID clientUUID = UUID.randomUUID();
+
 
         // if no arguments then use 'localhost' as server
         if (args.length < 1) {
@@ -34,7 +38,7 @@ public class JokeClient {
             String name;
             do {
                 // take in user input
-                System.out.print(" ");
+                System.out.print("\nPress 'enter' for a joke or proverb!\n");
                 System.out.flush();
 
                 // input from user
@@ -88,15 +92,5 @@ public class JokeClient {
             System.out.println("Socket error");
             exception.printStackTrace();
         }
-    }
-
-    // IP address to text conversion
-    static String toText(byte ip[]) { /* Make portable for 128 bit format */
-        StringBuffer result = new StringBuffer();
-        for (int i = 0; i < ip.length; ++i) {
-            if (i > 0) result.append(".");
-            result.append(0xff & ip[i]);
-        }
-        return result.toString();
     }
 }
