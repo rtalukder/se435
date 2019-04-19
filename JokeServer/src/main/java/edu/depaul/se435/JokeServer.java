@@ -8,6 +8,7 @@ package edu.depaul.se435;
 // Java I/O and networking libs
 import java.io.*;
 import java.net.*;
+import java.util.*;
 
 class Worker extends Thread {
     Socket socket;
@@ -28,13 +29,18 @@ class Worker extends Thread {
             outputSocket = new PrintStream((socket.getOutputStream()));
 
             try {
-                String name;
+                String client;
 
                 // receive line from client
-                name = inputSocket.readLine();
-                System.out.println("Looking up: " + name);
-                // pass name received from input to printRemoteAddress() function
-                PrintRemoteAddress(name, outputSocket);
+                client = inputSocket.readLine();
+                System.out.println("Joke Mode = " + ServerStatus.jokeMode);
+                if(ServerStatus.getJokeMode()){
+                    outputSocket.println(ServerStatus.jokeStack.pop());
+                }
+                else{
+                    outputSocket.println(ServerStatus.proverbStack.pop());
+                }
+
 
             } catch (IOException exception) {
                 System.out.println("Server read error");
@@ -44,14 +50,6 @@ class Worker extends Thread {
             socket.close();
         } catch (IOException ioexception) {
             System.out.println(ioexception);
-        }
-    }
-
-    static void PrintRemoteAddress(String name, PrintStream output) {
-        try {
-            output.println("this is a joke");
-        } catch (Exception exception) {
-            output.println("Something failed");
         }
     }
 }
@@ -99,9 +97,10 @@ class AdminWorker extends Thread {
             try {
                 String serverMode;
 
-                // receive line from admin client - pass it to the ServerMode function
+                // receive line from admin client - pass it to the ServerStatus function
                 serverMode = input.readLine();
                 System.out.println(serverMode);
+                System.out.println(ServerStatus.getJokeMode());
                 ServerMode(serverMode, output);
 
             } catch (IOException exception) {
@@ -121,19 +120,55 @@ class AdminWorker extends Thread {
         switch (serverMode) {
             case "joke":
                 outputSocket.println("Changing mode to joke");
-//                AdminLooper._jokeMode = true;
-//                AdminLooper._serverMode = true;
+                ServerStatus.jokeMode = true;
                 break;
             case "proverb":
                 outputSocket.println("Changing mode to proverb");
-//                AdminLooper._jokeMode = false;
-//                AdminLooper._serverMode = true;
+                ServerStatus.jokeMode = false;
                 break;
             default:
                 outputSocket.println("Not an option. Please select one from the list given.");
                 break;
         }
     }
+}
+
+// stores details about what mode the server is currently in
+// by default it starts in joke mode
+class ServerStatus {
+    static boolean jokeMode = true;
+
+    private static String[] jokes = {"A: <joke A>",
+                                     "B: <joke B>",
+                                     "C: <joke C>",
+                                     "D: <joke D>"};
+
+    private static String[] proverbs = {"A: <proverb A>",
+                                        "B: <proverb B>",
+                                        "C: <proverb C>",
+                                        "D: <proverb D>"};
+
+    static Stack<String> jokeStack = new Stack<>();
+    static Stack<String> proverbStack = new Stack<>();
+
+    ServerStatus() {}
+
+    static boolean getJokeMode(){
+        return jokeMode;
+    }
+
+    static void InitializeJokeStack(){
+        for(String joke : jokes){
+            jokeStack.push(joke);
+        }
+    }
+
+    static void InitializeProverbStack(){
+        for(String proverb : proverbs){
+            proverbStack.push(proverb);
+        }
+    }
+
 }
 
 // main class to start listener for admin client + listener for client connections
@@ -158,6 +193,8 @@ public class JokeServer {
         // accept incoming coming connections and then pass them along to the worker class
         while (true) {
             socket = serverSocket.accept();
+            ServerStatus.InitializeJokeStack();
+            ServerStatus.InitializeProverbStack();
             new Worker(socket).run();
         }
 
