@@ -8,3 +8,5 @@ log/
 target/
 
 .DS_Store
+*.txt
+*.txt.*

@@ -6,9 +6,17 @@ package edu.depaul.se435;
  **/
 
 // Java I/O and networking libs
-import java.io.*;
-import java.net.*;
+
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.PrintStream;
+import java.net.Socket;
+import java.net.ServerSocket;
 import java.util.*;
+import java.util.logging.FileHandler;
+import java.util.logging.SimpleFormatter;
+import java.util.logging.Logger;
 
 class Worker extends Thread {
     Socket socket;
@@ -20,8 +28,8 @@ class Worker extends Thread {
 
     public void run() {
         // receive input/output from the opened socket - non-admin
-        BufferedReader inputSocket = null;
-        PrintStream outputSocket = null;
+        BufferedReader inputSocket;
+        PrintStream outputSocket;
 
         // Try and open streams with given socket
         try {
@@ -29,28 +37,43 @@ class Worker extends Thread {
             outputSocket = new PrintStream((socket.getOutputStream()));
 
             try {
-                String uuid;
+                // check and see if server is powered on
+                if (ServerStatus.GetServerPowerState()){
+                    // receive username from client
+                    String username = inputSocket.readLine();
 
-                // receive line from client
-                uuid = inputSocket.readLine();
-                System.out.println("Joke Mode = " + ServerStatus.jokeMode);
-                if(ServerStatus.UserExists(uuid)){
-                    System.out.println(ServerStatus.userStatus.toString());
+                    // check if username exists in hashmap
+                    // if it does - return a joke or proverb depending on the server mode
+                    if (ServerStatus.UserExists(username)) {
+                        ServerStatus.Logger("User found: " + username);
+                        ServerStatus.GetReturnStatement(outputSocket, ServerStatus.GetJokeMode(), username);
+
+                    }
+                    // if the user doesn't exist - register the user in the hashmap
+                    // then return a joke or proverb depending on the server mode
+                    else {
+                        ServerStatus.Logger("New user: " + username + " registered");
+                        ServerStatus.RegisterUser(username);
+                        ServerStatus.GetReturnStatement(outputSocket, ServerStatus.GetJokeMode(), username);
+                    }
                 }
-                else{
-                    ServerStatus.RegisterUser(uuid);
-                    System.out.println(ServerStatus.userStatus.toString());
+                // server is currently powered off
+                else {
+                    outputSocket.println("Server is currently offline. Please visit later.");
+                    ServerStatus.Logger("Server is currently offline. Please visit later.");
                 }
-
-
+                // catch IOE
             } catch (IOException exception) {
                 System.out.println("Server read error");
                 exception.printStackTrace();
             }
-            // close socket after returning remote address or catching an exception
+            // close socket after returning joke, proverb, or catching an exception
             socket.close();
-        } catch (IOException ioexception) {
-            System.out.println(ioexception);
+
+            // catch IOE
+        } catch (IOException exception) {
+            System.out.println("Socket error");
+            exception.printStackTrace();
         }
     }
 }
@@ -58,18 +81,20 @@ class Worker extends Thread {
 // create listener for admin client
 class AdminListener implements Runnable {
     public void run() {
-        final int port = 21460;
+        final int port = 5050;
         final int queue_len = 6;
         Socket socket;
 
         try {
-            // admin client listening on port#: 21460
+            // admin client listening on port#: 5050
             ServerSocket serverSocket = new ServerSocket(port, queue_len);
 
             while (true) {
+                // accept admin client sessions
                 socket = serverSocket.accept();
                 new AdminWorker(socket).run();
             }
+            // catch IOE
         } catch (IOException exception) {
             System.out.println("Server error - can't open socket.");
             exception.printStackTrace();
@@ -77,85 +102,109 @@ class AdminListener implements Runnable {
     }
 }
 
+// class to allow modification of server behavior such as switching modes
 class AdminWorker extends Thread {
     Socket socket;
 
     // AdminWorker constructor assigning argument 'socket' to local variable 'socket'
-    AdminWorker(Socket socket) {
-        this.socket = socket;
-    }
+    AdminWorker (Socket socket) { this.socket = socket; }
 
     public void run() {
         // receive input/output from the opened socket - admin
-        BufferedReader input = null;
-        PrintStream output = null;
+        BufferedReader inputSocket;
+        PrintStream outputSocket;
 
         // Try and open streams with given socket
         try {
-            input = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-            output = new PrintStream((socket.getOutputStream()));
+            inputSocket = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+            outputSocket = new PrintStream((socket.getOutputStream()));
 
             try {
                 String serverMode;
 
-                // receive line from admin client - pass it to the ServerStatus function
-                serverMode = input.readLine();
-                System.out.println(serverMode);
-                System.out.println(ServerStatus.getJokeMode());
-                ServerMode(serverMode, output);
+                // receive line from admin client and update the server mode
+                serverMode = inputSocket.readLine();
+                UpdateServerMode(serverMode, outputSocket);
 
+                // catch IOE
             } catch (IOException exception) {
                 System.out.println("Server error - couldn't open socket");
                 exception.printStackTrace();
             }
-            // close connection
+            // close connection after changing server mode or catching exception
             socket.close();
+
+            // catch IOE
         } catch (IOException exception) {
             System.out.println("Server error - couldn't open up streams");
             exception.printStackTrace();
         }
     }
 
-    // updates the JokeServer mode to 'joke' or' proverb'
-    private void ServerMode(String serverMode, PrintStream outputSocket) {
+    // updates the JokeServer mode to 'joke' or' proverb' and power state from 'on' or 'off'
+    private void UpdateServerMode(String serverMode, PrintStream outputSocket) throws IOException {
         switch (serverMode) {
             case "joke":
-                outputSocket.println("Changing mode to joke");
+                outputSocket.println("Changing server mode to joke");
+                ServerStatus.Logger("Changing server mode to joke.");
                 ServerStatus.jokeMode = true;
                 break;
             case "proverb":
-                outputSocket.println("Changing mode to proverb");
+                outputSocket.println("Changing server mode to proverb");
+                ServerStatus.Logger("Changing server mode to proverb.");
                 ServerStatus.jokeMode = false;
+                break;
+            case "on":
+                outputSocket.println("Turning server on.");
+                ServerStatus.Logger("Turning server on.");
+                ServerStatus.serverOn = true;
+                break;
+            case "off":
+                outputSocket.println("Turning server off.");
+                ServerStatus.Logger("Turning server off.");
+                ServerStatus.serverOn = false;
                 break;
             default:
                 outputSocket.println("Not an option. Please select one from the list given.");
+                ServerStatus.Logger("Not an option. Please select one from the list given.");
                 break;
         }
     }
 }
 
-// stores details about what mode the server is currently in
-// by default it starts in joke mode
+// stores details about what mode the server is currently in and handles to send jokes or proverbs
+// by default it starts in joke mode and powered on
 class ServerStatus {
     static boolean jokeMode = true;
-    private static String[] jokes = {"A: <joke A>",
-                                     "B: <joke B>",
-                                     "C: <joke C>",
-                                     "D: <joke D>"};
+    static boolean serverOn = true;
 
-    private static String[] proverbs = {"A: <proverb A>",
-                                        "B: <proverb B>",
-                                        "C: <proverb C>",
-                                        "D: <proverb D>"};
+    // joke array
+    private static final String[] jokes = {"JD: <username> <joke D>",
+                                           "JC: <username> <joke C>",
+                                           "JB: <username> <joke B>",
+                                           "JA: <username> <joke A>"};
 
-    static HashMap<String, ArrayList<Stack<String>>> userStatus = new HashMap<>();
+    // proverb array
+    private static final String[] proverbs = {"PD: <username> <proverb D>",
+                                              "PC: <username> <proverb C>",
+                                              "PB: <username> <proverb B>",
+                                              "PA: <username> <proverb A>"};
 
+    // hold information about users and their respective joke and proverb stacks
+    private static HashMap<String, ArrayList<Stack<String>>> userStatus = new HashMap<>();
+
+    // default constuctor
     ServerStatus() {}
 
-    static boolean getJokeMode(){
+    // return if server is in joke or proverb mode
+    static boolean GetJokeMode(){
         return jokeMode;
     }
 
+    // return if server is on or off
+    static boolean GetServerPowerState() { return serverOn; }
+
+    // add jokes in order to stack for the first cycle
     static Stack InitializeJokeStack(){
         Stack<String> jokeStack = new Stack<>();
 
@@ -166,8 +215,35 @@ class ServerStatus {
         return jokeStack;
     }
 
+    // once all jokes have been seen in order - create a randomized stack of jokes
+    static void RandomizeJokeStack(String username){
+        // create a list of jokes that can be randomized
+        List<String> randomizedJokeList = Arrays.asList(jokes);
+        Collections.shuffle(randomizedJokeList);
+        // new joke stack with random order
+        Stack<String> jokeStack = new Stack<>();
+        // get current proverb stack - we will not be changing it
+        Stack<String> proverbStack = ServerStatus.GetProverbStack(username);
+
+        // push randomized jokes onto stack
+        for(String joke : randomizedJokeList){
+            jokeStack.push(joke);
+        }
+
+        // add randomized joke stack and current proverb stack to the ArrayList
+        ArrayList<Stack<String>> newJokeStack = new ArrayList<>();
+        newJokeStack.add(jokeStack);
+        newJokeStack.add(proverbStack);
+
+        // update the users value in the hashmap
+        // joke stack will be randomized and proverb stack will stay the same
+        userStatus.put(username, newJokeStack);
+    }
+
+    // add proverbs in order to the stack for the first cycle
     static Stack InitializeProverbStack(){
         Stack<String> proverbStack = new Stack<>();
+        Collections.shuffle(Arrays.asList(jokes));
 
         for(String proverb : proverbs){
             proverbStack.push(proverb);
@@ -176,58 +252,138 @@ class ServerStatus {
         return proverbStack;
     }
 
-    static void RegisterUser(String uuid) {
+    // once all proverbs have been seen in order - create a randomized stack of proverbs
+    static void RandomizeProverbStack(String username){
+        // create a list of jokes that can be randomized
+        List<String> randomizedProverbList = Arrays.asList(proverbs);
+        Collections.shuffle(randomizedProverbList);
+        // new proverb stack with random order
+        Stack<String> proverbStack = new Stack<>();
+        // get current joke stack - we will not be changing it
+        Stack<String> jokeStack = ServerStatus.GetJokeStack(username);
+
+        // push randomized proverbs onto stack
+        for(String proverb : randomizedProverbList){
+            proverbStack.push(proverb);
+        }
+
+        // add randomized proverb stack and current joke stack to a list
+        ArrayList<Stack<String>> newProverbStack = new ArrayList<>();
+        newProverbStack.add(jokeStack);
+        newProverbStack.add(proverbStack);
+
+        // update the users value in the hashmap
+        // proverb stack will be randomized and joke stack will stay the same
+        userStatus.put(username, newProverbStack);
+    }
+
+    // return joke stack - used to determine if stack is empty
+    static Stack<String> GetJokeStack(String username){
+        ArrayList <Stack<String>> userStacks = ServerStatus.GetUserStacks((username));
+        Stack<String> jokeStack = userStacks.get(0);
+
+        return jokeStack;
+    }
+
+    // return proverb stack - used to determine if stack is empty
+    static Stack<String> GetProverbStack(String username){
+        ArrayList <Stack<String>> userStacks = ServerStatus.GetUserStacks((username));
+        Stack<String> proverbStack = userStacks.get(1);
+
+        return proverbStack;
+    }
+
+    // register new users into the hashmap which is keeping track of users respective joke and proverb stacks
+    static void RegisterUser(String username) {
         ArrayList<Stack<String>> jokeProverbList = new ArrayList<>();
 
         jokeProverbList.add(InitializeJokeStack());
         jokeProverbList.add(InitializeProverbStack());
 
-        userStatus.put(uuid, jokeProverbList);
+        userStatus.put(username, jokeProverbList);
     }
 
-    static boolean UserExists(String uuid){
-        return userStatus.containsKey(uuid);
+    // check if the user exists
+    static boolean UserExists(String username){
+        return userStatus.containsKey(username);
     }
 
-    static ArrayList<Stack<String>> GetUserStatus(UUID uuid) {
-        return userStatus.get(uuid);
+    // return user's stacks - will aid in checking if the stacks are empty
+    static ArrayList<Stack<String>> GetUserStacks(String username){
+        return userStatus.get(username);
     }
 
-    public String GetReturnStatement (Boolean jokeMode, ArrayList<Stack<String>> jokeProberbList) {
+    // return a joke or proverb for a particular user
+    static void GetReturnStatement (PrintStream outputSocket, Boolean jokeMode, String username) throws IOException {
         if (jokeMode) {
-            Stack<String> jokeStack = jokeProberbList.get(0);
+            // check if joke stack is empty - if it's not it will pop a joke off the respective users joke stack
+            if((ServerStatus.GetJokeStack(username).empty())) {
+                outputSocket.println("Joke cycle has been completed. Will begin to send randomized jokes.");
+                ServerStatus.Logger("Joke cycle has been completed. Will begin to send randomized jokes.");
+                ServerStatus.RandomizeJokeStack(username);
+            }
 
-            String joke = jokeStack.pop();
-            return joke;
+            // pop a joke off the stack and replace the <username> portion of the string with the actual username
+            Stack<String> jokeStack = ServerStatus.GetJokeStack(username);
+            String unformattedString = jokeStack.pop();
+            outputSocket.println(unformattedString.replace("<username>", username));
+            ServerStatus.Logger(unformattedString.replace("<username>", username));
         }
-        Stack<String> proverbStack = jokeProberbList.get(1);
+        else {
+            // check if proverb stack is empty - if it's not it will pop a joke off the respective users proverb stack
+            if((ServerStatus.GetProverbStack(username).empty())) {
+                outputSocket.println("Proverb cycle has been completed. Will begin to send randomized proverbs.");
+                ServerStatus.Logger("Proverb cycle has been completed. Will begin to send randomized proverbs.");
+                ServerStatus.RandomizeProverbStack(username);
+            }
 
-        String proverb = proverbStack.pop();
-        return proverb;
+            // pop a proverb off the stack and replace the <username> portion of the string with the actual username
+            Stack<String> proverbStack = ServerStatus.GetProverbStack(username);
+            String unformattedString = proverbStack.pop();
+            outputSocket.println(unformattedString.replace("<username>", username));
+            ServerStatus.Logger(unformattedString.replace("<username>", username));
+        }
     }
 
+    // writes logs to "JokeLog.txt" - all logs are appended and nothing is deleted
+    static void Logger(String writeToFile) throws IOException {
+        // setting up file, handler, and formatter - all logs will be appended
+        FileHandler fileHandler = new FileHandler("JokeLog.txt", true);
+        SimpleFormatter fileFormatter = new SimpleFormatter();
+        fileHandler.setFormatter(fileFormatter);
+
+        // open logger
+        Logger logger = Logger.getLogger("JokeServer");
+        logger.addHandler(fileHandler);
+
+        // write to log and close handler after
+        logger.info(writeToFile);
+        fileHandler.close();
+    }
 }
 
 // main class to start listener for admin client + listener for client connections
 public class JokeServer {
     public static void main(String[] args) throws IOException {
-        final int port = 9999;
+        final int port = 4545;
         final int queue_len = 6;
         Socket socket;
 
-        // create socket listening on port#: 21460 + queue length of 6
+        // create socket listening on port#: 5050 + queue length of 6
         // this socket is for admin clients
         // must be ran on its own thread otherwise client code will never start
-        System.out.println("Starting the AdminClient, listening on port 24160 for administrators.\n");
+        System.out.println("Starting the AdminClient, listening on port 5050 for administrators.\n");
+        ServerStatus.Logger("Starting the AdminClient, listening on port 5050 for administrators.");
         Thread adminClientThread = new Thread(new AdminListener());
         adminClientThread.start();
 
-        // create socket listening on port#: 9999 + queue length of 6
+        // create socket listening on port#: 4545 + queue length of 6
         // this socket is for regular clients
         ServerSocket serverSocket = new ServerSocket(port, queue_len);
-        System.out.println("The JokeServer v1.8 starting up, listening on port 9999 for clients.\n" );
+        System.out.println("The JokeServer v1.8 starting up, listening on port 4545 for clients.\n" );
+        ServerStatus.Logger("The JokeServer v1.8 starting up, listening on port 4545 for clients.");
 
-        // accept incoming coming connections and then pass them along to the worker class
+        // accept incoming client connections and then pass them along to the worker class
         while (true) {
             socket = serverSocket.accept();
             new Worker(socket).run();
