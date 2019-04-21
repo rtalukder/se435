@@ -29,16 +29,17 @@ class Worker extends Thread {
             outputSocket = new PrintStream((socket.getOutputStream()));
 
             try {
-                String client;
+                String uuid;
 
                 // receive line from client
-                client = inputSocket.readLine();
+                uuid = inputSocket.readLine();
                 System.out.println("Joke Mode = " + ServerStatus.jokeMode);
-                if(ServerStatus.getJokeMode()){
-                    outputSocket.println(ServerStatus.jokeStack.pop());
+                if(ServerStatus.UserExists(uuid)){
+                    System.out.println(ServerStatus.userStatus.toString());
                 }
                 else{
-                    outputSocket.println(ServerStatus.proverbStack.pop());
+                    ServerStatus.RegisterUser(uuid);
+                    System.out.println(ServerStatus.userStatus.toString());
                 }
 
 
@@ -137,7 +138,6 @@ class AdminWorker extends Thread {
 // by default it starts in joke mode
 class ServerStatus {
     static boolean jokeMode = true;
-
     private static String[] jokes = {"A: <joke A>",
                                      "B: <joke B>",
                                      "C: <joke C>",
@@ -148,8 +148,7 @@ class ServerStatus {
                                         "C: <proverb C>",
                                         "D: <proverb D>"};
 
-    static Stack<String> jokeStack = new Stack<>();
-    static Stack<String> proverbStack = new Stack<>();
+    static HashMap<String, ArrayList<Stack<String>>> userStatus = new HashMap<>();
 
     ServerStatus() {}
 
@@ -157,16 +156,54 @@ class ServerStatus {
         return jokeMode;
     }
 
-    static void InitializeJokeStack(){
+    static Stack InitializeJokeStack(){
+        Stack<String> jokeStack = new Stack<>();
+
         for(String joke : jokes){
             jokeStack.push(joke);
         }
+
+        return jokeStack;
     }
 
-    static void InitializeProverbStack(){
+    static Stack InitializeProverbStack(){
+        Stack<String> proverbStack = new Stack<>();
+
         for(String proverb : proverbs){
             proverbStack.push(proverb);
         }
+
+        return proverbStack;
+    }
+
+    static void RegisterUser(String uuid) {
+        ArrayList<Stack<String>> jokeProverbList = new ArrayList<>();
+
+        jokeProverbList.add(InitializeJokeStack());
+        jokeProverbList.add(InitializeProverbStack());
+
+        userStatus.put(uuid, jokeProverbList);
+    }
+
+    static boolean UserExists(String uuid){
+        return userStatus.containsKey(uuid);
+    }
+
+    static ArrayList<Stack<String>> GetUserStatus(UUID uuid) {
+        return userStatus.get(uuid);
+    }
+
+    public String GetReturnStatement (Boolean jokeMode, ArrayList<Stack<String>> jokeProberbList) {
+        if (jokeMode) {
+            Stack<String> jokeStack = jokeProberbList.get(0);
+
+            String joke = jokeStack.pop();
+            return joke;
+        }
+        Stack<String> proverbStack = jokeProberbList.get(1);
+
+        String proverb = proverbStack.pop();
+        return proverb;
     }
 
 }
@@ -193,8 +230,6 @@ public class JokeServer {
         // accept incoming coming connections and then pass them along to the worker class
         while (true) {
             socket = serverSocket.accept();
-            ServerStatus.InitializeJokeStack();
-            ServerStatus.InitializeProverbStack();
             new Worker(socket).run();
         }
 
