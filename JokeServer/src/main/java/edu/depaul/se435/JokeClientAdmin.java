@@ -79,7 +79,8 @@ public class JokeClientAdmin {
             fromServer = new BufferedReader(new InputStreamReader(socket.getInputStream()));
             toServer = new PrintStream(socket.getOutputStream());
 
-            // send the server mode
+            // send the server mode and log it
+            JokeClientAdmin.Logger(serverMode);
             toServer.println(serverMode.toLowerCase());
             toServer.flush();
 
