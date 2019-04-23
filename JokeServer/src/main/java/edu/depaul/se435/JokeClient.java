@@ -5,6 +5,56 @@ package edu.depaul.se435;
  * Author: Raquib Talukder
  **/
 
+/*--------------------------------------------------------
+
+1. Raquib Talukder /  4/22/19
+
+2. Java version used, if not the official version for the class:
+
+java version "10.0.2" 2018-07-17
+Java(TM) SE Runtime Environment 18.3 (build 10.0.2+13)
+Java HotSpot(TM) 64-Bit Server VM 18.3 (build 10.0.2+13, mixed mode)
+
+3. Precise command-line compilation examples / instructions:
+
+> javac JokeServer.java
+> javac JokeClient.java
+> javac JokeClientAdmin.java
+
+4. Precise examples / instructions to run this program:
+
+In separate shell windows, start the JokeServer, JokeClient and JokeClientAdmin
+
+> java JokeServer
+> java JokeClient
+> java JokeClientAdmin
+
+All acceptable commands are displayed on the various consoles.
+
+The program only currently runs through localhost
+
+> java JokeClient
+> java JokeClientAdmin
+> java JokeClient localhost
+> java JokeClientAdmin localhost
+
+5. List of files needed for running the program.
+
+ a. JokeServer.java
+ b. JokeClient.java
+ c. JokeClientAdmin.java
+
+5. Notes:
+
+e.g.:
+
+I faked the random number generator. I have a bug that comes up once every
+ten runs or so. If the server hangs, just kill it and restart it. You do not
+have to restart the clients, they will find the server again when a request
+is made.
+
+----------------------------------------------------------*/
+
 // Java I/O and networking libs
 
 import java.io.BufferedReader;
