@@ -12,6 +12,12 @@ package edu.depaul.se435;
 
 2. Java version used, if not the official version for the class:
 
+(Windows)
+java version "1.8.0_71"
+Java(TM) SE Runtime Environment (build 1.8.0_71-b15)
+Java HotSpot(TM) 64-Bit Server VM (build 25.71-b15, mixed mode)
+
+(MacOS)
 java version "10.0.2" 2018-07-17
 Java(TM) SE Runtime Environment 18.3 (build 10.0.2+13)
 Java HotSpot(TM) 64-Bit Server VM 18.3 (build 10.0.2+13, mixed mode)
@@ -32,7 +38,7 @@ In separate shell windows, start the JokeServer, JokeClient and JokeClientAdmin
 
 All acceptable commands are displayed on the various consoles.
 
-The program only currently runs on through localhost
+The program only currently runs through localhost
 
 > java JokeClient
 > java JokeClientAdmin
@@ -47,12 +53,10 @@ The program only currently runs on through localhost
 
 5. Notes:
 
-e.g.:
+- Username has UUID appended to the end of the username string.
+- No secondary JokeServer was implemented
+- JokeClientAdmin has the ability to shut the server down
 
-I faked the random number generator. I have a bug that comes up once every
-ten runs or so. If the server hangs, just kill it and restart it. You do not
-have to restart the clients, they will find the server again when a request
-is made.
 
 ----------------------------------------------------------*/
 
@@ -193,6 +197,7 @@ class AdminWorker extends Thread {
     }
 
     // updates the JokeServer mode to 'joke' or' proverb' and power state from 'on' or 'off'
+    // all changes and mistakes are logged
     private void UpdateServerMode(String serverMode, PrintStream outputSocket) throws IOException {
         switch (serverMode) {
             case "joke":
@@ -214,6 +219,10 @@ class AdminWorker extends Thread {
                 outputSocket.println("Turning server off.");
                 ServerStatus.Logger("Turning server off.");
                 ServerStatus.serverOn = false;
+                break;
+            case "get status":
+                outputSocket.println("JokeServer status || Joke Mode: " + ServerStatus.GetJokeMode() + " || Server Powered On: " + ServerStatus.GetServerPowerState());
+                ServerStatus.Logger("Turning server off.");
                 break;
             default:
                 outputSocket.println("Not an option. Please select one from the list given.");
@@ -294,7 +303,6 @@ class ServerStatus {
     // add proverbs in order to the stack for the first cycle
     static Stack InitializeProverbStack(){
         Stack<String> proverbStack = new Stack<>();
-        Collections.shuffle(Arrays.asList(jokes));
 
         for(String proverb : proverbs){
             proverbStack.push(proverb);
@@ -399,7 +407,7 @@ class ServerStatus {
     // writes logs to "JokeLog.txt" - all logs are appended and nothing is deleted
     static void Logger(String writeToFile) throws IOException {
         // setting up file, handler, and formatter - all logs will be appended
-        FileHandler fileHandler = new FileHandler("JokeLog.txt", true);
+        FileHandler fileHandler = new FileHandler("JokeLogger.txt", true);
         SimpleFormatter fileFormatter = new SimpleFormatter();
         fileHandler.setFormatter(fileFormatter);
 

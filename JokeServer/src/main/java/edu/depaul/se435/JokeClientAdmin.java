@@ -31,7 +31,7 @@ In separate shell windows, start the JokeServer, JokeClient and JokeClientAdmin
 
 All acceptable commands are displayed on the various consoles.
 
-The program only currently runs on through localhost
+The program only currently runs through localhost
 
 > java JokeClient
 > java JokeClientAdmin
@@ -46,12 +46,9 @@ The program only currently runs on through localhost
 
 5. Notes:
 
-e.g.:
-
-I faked the random number generator. I have a bug that comes up once every
-ten runs or so. If the server hangs, just kill it and restart it. You do not
-have to restart the clients, they will find the server again when a request
-is made.
+- Username has UUID appended to the end of the username string.
+- No secondary JokeServer was implemented
+- JokeClientAdmin has the ability to shut the server down
 
 ----------------------------------------------------------*/
 
@@ -91,12 +88,11 @@ public class JokeClientAdmin {
             String serverMode;
             do {
                 // take in user input
-                System.out.print("\nSelect server mode: \n - Joke\n - Proverb \n - On\n - Off\nadmin@~ $ ");
+                System.out.print("\nSelect server mode: \n - Joke\n - Proverb \n - On\n - Off\n - Get Status\nadmin@~ $ ");
                 System.out.flush();
 
                 // input from user
                 serverMode = inputSocket.readLine();
-                System.out.println(serverMode);
 
                 // if input is 'quit' - leave loop - else call ChangeServerMode function
                 if (!serverMode.contains("quit")){
@@ -130,7 +126,7 @@ public class JokeClientAdmin {
             toServer = new PrintStream(socket.getOutputStream());
 
             // send the server mode and log it
-            JokeClientAdmin.Logger(serverMode);
+            JokeClientAdmin.Logger("Changing JokeServer Mode to: " + serverMode);
             toServer.println(serverMode.toLowerCase());
             toServer.flush();
 
@@ -155,7 +151,7 @@ public class JokeClientAdmin {
     // writes logs to "JokeLog.txt" - all logs are appended and nothing is deleted
     static void Logger(String writeToFile) throws IOException {
         // setting up file, handler, and formatter - all logs will be appended
-        FileHandler fileHandler = new FileHandler("JokeLog.txt", true);
+        FileHandler fileHandler = new FileHandler("JokeLogger.txt", true);
         SimpleFormatter fileFormatter = new SimpleFormatter();
         fileHandler.setFormatter(fileFormatter);
 
