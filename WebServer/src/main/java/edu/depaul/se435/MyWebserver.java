@@ -1,13 +1,14 @@
 package edu.depaul.se435;
 
 /**
- * Class: SE<xxx> - <descrption>
+ * Class: SE433 - MyWebserver
  * Author: Raquib Talukder
  **/
 
 import java.io.*;
 import java.net.*;
 import java.util.Arrays;
+import org.apache.commons.io.FileUtils;
 
 
 class Worker extends Thread {
@@ -41,7 +42,7 @@ class Worker extends Thread {
                 }
                 System.out.flush();
             }
-            socket.close();
+            //socket.close();
         }
         catch (IOException ioexception) {
             System.out.println(ioexception);
@@ -56,9 +57,11 @@ class Worker extends Thread {
 
         String header = CreateHeader(filename, HTTPversion, contentType);
 
-        if (filename.endsWith("/.xyz") || filename.endsWith("/")) ReplyToRequestDirectory(outputSocket, filename, header);
+        if (filename.endsWith("/")) ReplyToRequestDirectory(outputSocket, filename, header);
 
         else ReplyToRequest(outputSocket, filename, header);
+
+        outputSocket.close();
     }
 
     static void ReplyToRequest(PrintStream outputSocket, String filename, String header) {
@@ -120,7 +123,7 @@ class Worker extends Thread {
             System.out.println(headerHTML);
             outputSocket.println(header);
             outputSocket.write(headerHTML.getBytes());
-            outputSocket.write("\r\n\r\n".getBytes());
+            outputSocket.close();
 
         } catch (NullPointerException exception) {
             outputSocket.println(header + "\r\n\r\n");
@@ -130,23 +133,28 @@ class Worker extends Thread {
         }
     }
 
-    static String GetContentLength(String filename) {
+    static String GetContentLength(String filename) throws IllegalArgumentException {
         String fullFilePath = pwd() + filename;
         File targetFile = new File(fullFilePath);
 
-        long fileLength = targetFile.length();
-        String fileLengthString = Long.toString(fileLength);
+        if (fullFilePath.endsWith("/")) {
+            return Long.toString(FileUtils.sizeOfDirectory(targetFile));
+        }
+        else {
+            long fileLength = targetFile.length();
+            String fileLengthString = Long.toString(fileLength);
 
-        return fileLengthString;
+            return fileLengthString;
+        }
     }
 
     static String GetContentType (String file) {
-        if (file.endsWith(".html") || file.endsWith(".xyz") || file.endsWith("/")) return "text/html";
+        if (file.endsWith(".html") || file.endsWith("/")) return "text/html";
         else if (file.endsWith(".txt")) return "text/plain";
         else return "text/plain";
     }
 
-    static String CreateHeader(String filename, String HTTPversion, String contentType){
+    static String CreateHeader(String filename, String HTTPversion, String contentType) {
         final String response200 = "200 OK";
         final String response404 = "404 Not Found";
 
@@ -203,6 +211,5 @@ public class MyWebserver {
             socket = serverSocket.accept();
             new Worker(socket).run();
         }
-
     }
 }
