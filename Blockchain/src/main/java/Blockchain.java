@@ -20,6 +20,9 @@ import java.net.*;
 import java.security.*;
 import java.security.spec.X509EncodedKeySpec;
 import java.util.*;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.PriorityBlockingQueue;
 import java.util.regex.*;
 import java.text.*;
 import java.io.BufferedReader;
@@ -48,10 +51,17 @@ class BlockchainPublicKeysServer implements Runnable {
             this.socket = datagramSocket;
         }
         catch (Exception exception){
-            System.out.println("Exception caught");
+            System.out.println("BlockchainPubKeysServer: Exception caught");
         }
-
         this.PIDPubKeys = new HashMap<>();
+    }
+
+    public int getHashSize(){
+        return this.PIDPubKeys.size();
+    }
+
+    public PublicKey getPubKey(String PID){
+        return this.PIDPubKeys.get(PID);
     }
 
     @Override
@@ -59,7 +69,7 @@ class BlockchainPublicKeysServer implements Runnable {
         // source for UDP Datagram packets: https://www.baeldung.com/udp-in-java
         // DatagramPacket is used to receive messages on speficied port
         // DatagramSocket is created in the constructor and is associated with the PID
-        final byte[] buffer = new byte[256];
+        final byte[] buffer = new byte[2048];
         DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
 
         while (true) {
@@ -78,59 +88,117 @@ class BlockchainPublicKeysServer implements Runnable {
                 X509EncodedKeySpec keySpec = new X509EncodedKeySpec(pubKeyDecoded);
                 KeyFactory pubKeyFactory = KeyFactory.getInstance("RSA");
                 PublicKey pubKeyToHash = pubKeyFactory.generatePublic(keySpec);
-                PIDPubKeys.put(splitString[1], pubKeyToHash);
-                System.out.println(splitString[1]);
-                System.out.println(pubKeyToHash.toString());
+                this.PIDPubKeys.put(splitString[1], pubKeyToHash);
             }
             catch (Exception exception){
-                System.out.println("Exception caught while unpacking public key");
+                System.out.println("BlockchainPubKeysServer - Run: Exception caught while unpacking public key");
             }
         }
     }
 }
 
-class BlockchainVerifierServer implements Runnable {
-    DatagramSocket socket;
+class BlockchainVerifierServer extends Thread {
+    BlockchainPublicKeysServer blockchainPublicKeysServer;
     int PID;
+    DatagramSocket socket;
+    private Queue<BlockRecord> unverifiedBlocksList;
+    LinkedList<BlockRecord> blockchainList;
+    ArrayList<String> blockIDList;
 
-    public BlockchainVerifierServer(int blockchainVerifierPort, int PID){
+    // int blockchainVerifierPort, int PID, BlockchainPublicKeysServer blockchainPublicKeysServer
+    public BlockchainVerifierServer(int blockchainVerifierPort, int PID, BlockchainPublicKeysServer blockchainPublicKeysServer){
+        this.blockchainPublicKeysServer = blockchainPublicKeysServer;
         this.PID = PID;
+        this.unverifiedBlocksList = new LinkedList<BlockRecord>();
+        this.blockchainList = new LinkedList<BlockRecord>();
+        this.blockIDList = new ArrayList<String>();
+        // dummy data for the first block
+        this.blockIDList.add("77df263f49123356d28a4a8715d25bf5b980beeeb503cab46ea61ac9f3320eda");
+        BlockRecord dummyRecord = new BlockRecord();
+        dummyRecord.setABlockID("236e1834-5a02-46a3-974e-58e90bf87d2b");
+        dummyRecord.setASHA256String("77df263f49123356d28a4a8715d25bf5b980beeeb503cab46ea61ac9f3320eda");
+        dummyRecord.setABlockID("0");
+        this.blockchainList.add(dummyRecord);
+    }
 
+    public void AddBlock(String XMLblock){
+        BlockRecord convertedBlock = this.ConvertBlock(XMLblock);
         try {
-            DatagramSocket datagramSocket = new DatagramSocket(blockchainVerifierPort);
-            this.socket = datagramSocket;
+            if (convertedBlock != null) {
+                this.unverifiedBlocksList.add(convertedBlock);
+            }
+        } catch (Exception exception){
+            exception.printStackTrace();
+            System.out.println("AddBlock: Exception thrown");
+        }
+    }
+
+    public BlockRecord ConvertBlock(String XMLblock){
+        BlockRecord convertedBlock = null;
+        try {
+            StringReader reader = new StringReader(XMLblock);
+            JAXBContext jaxbContext = JAXBContext.newInstance(BlockRecord.class);
+            Unmarshaller jaxbUnmarshaller = jaxbContext.createUnmarshaller();
+            convertedBlock = (BlockRecord) jaxbUnmarshaller.unmarshal(reader);
+
         }
         catch (Exception exception){
-            System.out.println("Exception caught");
+            System.out.println("ConvertBlock: Exception caught.");
+            Thread.currentThread().interrupt();
+
+        }
+        return convertedBlock;
+    }
+
+    // utility function from Professor Elliott
+    public boolean VerifySignature(byte[] data, PublicKey key, byte[] sig){
+        try {
+            Signature signer = Signature.getInstance("SHA1withRSA");
+            signer.initVerify(key);
+            signer.update(data);
+            return (signer.verify(sig));
+        }
+        catch (Exception excpetion){
+            excpetion.printStackTrace();
+            System.out.println("VerifySignature: Exception caught.");
+            return false;
         }
     }
 
     @Override
-    public void run() {
-        // source for UDP Datagram packets: https://www.baeldung.com/udp-in-java
-        // DatagramPacket is used to receive messages on speficied port
-        // DatagramSocket is created in the constructor and is associated with the PID
-        final byte[] buffer = new byte[256];
-        DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
-
+    public void run(){
         while (true) {
-            try {
-                this.socket.receive(packet);
-            } catch (IOException exception) {
-                System.out.println("IOE exception caught.");
+            System.out.println(unverifiedBlocksList.size());
+            if(!(this.unverifiedBlocksList.isEmpty())){
+                System.out.println(this.unverifiedBlocksList.size());
+                BlockRecord workingBlock = unverifiedBlocksList.remove();
+
+                // find out who signed the block
+                byte[] decodedBlockSignature = Base64.getDecoder().decode(workingBlock.getASignedBlockUUID());
+                String[] splitPID = workingBlock.getAPID().split(" ");
+                PublicKey getPIDPubKey = this.blockchainPublicKeysServer.getPubKey(splitPID[1]);
+                boolean verifiedSignatureBlockID = this.VerifySignature(workingBlock.getABlockID().getBytes(), getPIDPubKey, decodedBlockSignature);
+                System.out.println(verifiedSignatureBlockID);
+
+                if(!verifiedSignatureBlockID){
+                    continue;
+                }
+
             }
         }
+
     }
 }
 
-class UnverifiedBlockchainServer implements Runnable{
+class UnverifiedBlockchainServer extends Thread {
+    BlockchainVerifierServer blockchainVerifierServer;
     DatagramSocket socket;
-    // utility functions in package to get public/private keys later for verifying and signing
     KeyPair pubPrivKey;
     int PID;
 
-    public UnverifiedBlockchainServer(int unverifiedBlockchainServerPort, int PID) {
+    public UnverifiedBlockchainServer(int unverifiedBlockchainServerPort, int PID, BlockchainVerifierServer blockchainVerifier) {
         this.PID = PID;
+        this.blockchainVerifierServer = blockchainVerifier;
 
         try {
             this.pubPrivKey = GenerateKeyPair();
@@ -138,9 +206,8 @@ class UnverifiedBlockchainServer implements Runnable{
             this.socket = datagramSocket;
         }
         catch (Exception exception){
-            System.out.println("Exception caught");
+            System.out.println("UnverifiedBlockchainServer: Exception caught");
         }
-
         if (PID == 2){
             MulticastEvent("PUBKEYS");
         }
@@ -151,9 +218,10 @@ class UnverifiedBlockchainServer implements Runnable{
         // source for UDP Datagram packets: https://www.baeldung.com/udp-in-java
         // DatagramPacket is used to receive messages on speficied port
         // DatagramSocket is created in the constructor and is associated with the PID
-        final byte[] buffer = new byte[256];
+        // Blockchain Verifier thread is started here
+        final byte[] buffer = new byte[2048];
         DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
-
+        new Thread(this.blockchainVerifierServer).start();
         while (true){
             try {
                 this.socket.receive(packet);
@@ -165,6 +233,9 @@ class UnverifiedBlockchainServer implements Runnable{
 
             if (event.startsWith("PUBKEYS")){
                 MulticastKeys();
+            }
+            else {
+                blockchainVerifierServer.AddBlock(event);
             }
         }
     }
@@ -257,7 +328,7 @@ class UnverifiedBlockchainServer implements Runnable{
 
                 // sign SHA256string with private key
                 // convert SignedSHA256String to a string and set in BlockRecord
-                String SignedSHA256String = Base64.getEncoder().encodeToString(this.SignData(SHA256String.getBytes()));
+                String SignedSHA256String = Base64.getEncoder().encodeToString(SignData(SHA256String.getBytes()));
                 newBlockRecord.setASignedBlockUUID(SignedSHA256String);
 
                 // entire block is now signed, convert again to XML
@@ -270,10 +341,9 @@ class UnverifiedBlockchainServer implements Runnable{
                 BlockRecordCount+=1;
             }
         } catch (Exception exception) {
-            System.out.println("Exception caught.");
+            System.out.println("Exception caught. Potentially incorrect filename.\n Please try another filename.");
             return BlockRecordCount;
         }
-
         return BlockRecordCount;
     }
 
@@ -286,22 +356,24 @@ class UnverifiedBlockchainServer implements Runnable{
             hostname = InetAddress.getLocalHost();
         }
         catch (UnknownHostException exception){
-            System.out.println("Unknown host.");
+            System.out.println("MulticastBlock: Unknown host.");
         }
 
         for (int port : verfiedBlockchainPorts) {
             DatagramPacket packet = new DatagramPacket(XMLblock.getBytes(), (XMLblock.getBytes()).length, hostname, port);
-
             try {
                 this.socket.send(packet);
             }
             catch (IOException exception){
-                System.out.println("Unable to send packet");
+                System.out.println("MulticastBlock: Unable to send packet");
             }
         }
+
+        //System.out.println(XMLblock);
     }
 
     // source for UDP multicasting: https://www.baeldung.com/java-broadcast-multicast
+    // multicast the public keys of the servers to the BlockchainPublicKeysServer
     public void MulticastKeys(){
         int[] blockchainPubKeysPort = {4710, 4711, 4712};
 
@@ -316,21 +388,21 @@ class UnverifiedBlockchainServer implements Runnable{
             hostname = InetAddress.getLocalHost();
         }
         catch (UnknownHostException exception){
-            System.out.println("Unknown host.");
+            System.out.println("MulticastKeys: Unknown host.");
         }
 
         for (int port : blockchainPubKeysPort) {
             DatagramPacket packet = new DatagramPacket(eventString.getBytes(), eventString.length(), hostname, port);
-
             try {
                 this.socket.send(packet);
             }
             catch (IOException exception){
-                System.out.println("Unable to send packet");
+                System.out.println("MulticastKeys: Unable to send packet");
             }
         }
     }
 
+    // multicast an event to the unverified server
     public void MulticastEvent(String event){
         int[] verfiedBlockchainPorts = {4820, 4821, 4822};
 
@@ -339,7 +411,7 @@ class UnverifiedBlockchainServer implements Runnable{
             hostname = InetAddress.getLocalHost();
         }
         catch (UnknownHostException exception){
-            System.out.println("Unknown host.");
+            System.out.println("MulticastEvent: Unknown host.");
         }
 
         for (int port : verfiedBlockchainPorts) {
@@ -349,10 +421,14 @@ class UnverifiedBlockchainServer implements Runnable{
                 this.socket.send(packet);
             }
             catch (IOException exception){
-                System.out.println("Unable to send packet");
+                System.out.println("MulticastEvent: Unable to send packet");
             }
         }
     }
+}
+
+class BlockchainServer{
+
 }
 
 public class Blockchain {
@@ -375,7 +451,6 @@ public class Blockchain {
                     PID = 0;
             }
         }
-
         int blockchainPublicKeysServerPort = 4710 + PID;
         int unverifiedBlockchainServerPort = 4820 + PID;
         int verifiedBlockchainServerPort = 4930 + PID;
@@ -383,16 +458,21 @@ public class Blockchain {
         System.out.println("Server PIDs: " + blockchainPublicKeysServerPort + " " + unverifiedBlockchainServerPort + " " + verifiedBlockchainServerPort);
 
         BlockchainPublicKeysServer blockchainPublicKeys = new BlockchainPublicKeysServer(blockchainPublicKeysServerPort, PID);
-        UnverifiedBlockchainServer unverifiedBlockchainServer = new UnverifiedBlockchainServer(unverifiedBlockchainServerPort, PID);
-        BlockchainVerifierServer blockchainVerifier = new BlockchainVerifierServer(verifiedBlockchainServerPort, PID);
+        BlockchainVerifierServer blockchainVerifier = new BlockchainVerifierServer(verifiedBlockchainServerPort, PID, blockchainPublicKeys);
+        //BlockchainVerifierServer blockchainVerifier = new BlockchainVerifierServer();
+        UnverifiedBlockchainServer unverifiedBlockchainServer = new UnverifiedBlockchainServer(unverifiedBlockchainServerPort, PID, blockchainVerifier);
 
-        Thread keysThread = new Thread(blockchainPublicKeys);
+        //Thread keysThread = new Thread(blockchainPublicKeys);
         Thread unverifiedThread = new Thread(unverifiedBlockchainServer);
-        Thread verifiedThread = new Thread(blockchainVerifier);
+        //Thread verifiedThread = new Thread(blockchainVerifier);
 
-        keysThread.start();
+        //keysThread.start();
         unverifiedThread.start();
-        verifiedThread.start();
+        //verifiedThread.start();
+
+        // loop until all public keys have been collected
+        // once all servers have it, continue with console commands
+        //while (!(blockchainPublicKeys.getHashSize() == 3)) System.out.flush();
 
         BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
         String userString;
@@ -434,10 +514,11 @@ public class Blockchain {
 
             } while (!userString.equals("quit")); {
                 System.out.println("User ended program.");
+                System.exit(0);
             }
         }
         catch (IOException exception){
-            System.out.println("IO Exception");
+            System.out.println("Blockchain Main: IO Exception");
         }
     }
 }
