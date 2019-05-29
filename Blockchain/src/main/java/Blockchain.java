@@ -101,17 +101,17 @@ class BlockchainVerifierServer extends Thread {
     BlockchainPublicKeysServer blockchainPublicKeysServer;
     int PID;
     DatagramSocket socket;
-    private Queue<BlockRecord> unverifiedBlocksList;
+    BlockingQueue<BlockRecord> unverifiedBlocksList;
     LinkedList<BlockRecord> blockchainList;
     ArrayList<String> blockIDList;
 
     // int blockchainVerifierPort, int PID, BlockchainPublicKeysServer blockchainPublicKeysServer
-    public BlockchainVerifierServer(int blockchainVerifierPort, int PID, BlockchainPublicKeysServer blockchainPublicKeysServer){
+    public BlockchainVerifierServer(int PID, BlockchainPublicKeysServer blockchainPublicKeysServer){
         this.blockchainPublicKeysServer = blockchainPublicKeysServer;
         this.PID = PID;
-        this.unverifiedBlocksList = new LinkedList<BlockRecord>();
-        this.blockchainList = new LinkedList<BlockRecord>();
-        this.blockIDList = new ArrayList<String>();
+        this.unverifiedBlocksList = new LinkedBlockingQueue<>();
+        this.blockchainList = new LinkedList<>();
+        this.blockIDList = new ArrayList<>();
         // dummy data for the first block
         this.blockIDList.add("77df263f49123356d28a4a8715d25bf5b980beeeb503cab46ea61ac9f3320eda");
         BlockRecord dummyRecord = new BlockRecord();
@@ -144,8 +144,6 @@ class BlockchainVerifierServer extends Thread {
         }
         catch (Exception exception){
             System.out.println("ConvertBlock: Exception caught.");
-            Thread.currentThread().interrupt();
-
         }
         return convertedBlock;
     }
@@ -168,8 +166,9 @@ class BlockchainVerifierServer extends Thread {
     @Override
     public void run(){
         while (true) {
-            System.out.println(unverifiedBlocksList.size());
-            if(!(this.unverifiedBlocksList.isEmpty())){
+            System.out.println(this.blockchainPublicKeysServer.PIDPubKeys.values());
+            if(!(unverifiedBlocksList.isEmpty())){
+                System.out.println(this.blockchainPublicKeysServer.PIDPubKeys.values());
                 System.out.println(this.unverifiedBlocksList.size());
                 BlockRecord workingBlock = unverifiedBlocksList.remove();
 
@@ -178,11 +177,11 @@ class BlockchainVerifierServer extends Thread {
                 String[] splitPID = workingBlock.getAPID().split(" ");
                 PublicKey getPIDPubKey = this.blockchainPublicKeysServer.getPubKey(splitPID[1]);
                 boolean verifiedSignatureBlockID = this.VerifySignature(workingBlock.getABlockID().getBytes(), getPIDPubKey, decodedBlockSignature);
-                System.out.println(verifiedSignatureBlockID);
+                System.out.println("PID: " + PID);
 
-                if(!verifiedSignatureBlockID){
-                    continue;
-                }
+//                if(!verifiedSignatureBlockID){
+//                    continue;
+//                }
 
             }
         }
@@ -196,9 +195,9 @@ class UnverifiedBlockchainServer extends Thread {
     KeyPair pubPrivKey;
     int PID;
 
-    public UnverifiedBlockchainServer(int unverifiedBlockchainServerPort, int PID, BlockchainVerifierServer blockchainVerifier) {
+    public UnverifiedBlockchainServer(int unverifiedBlockchainServerPort, BlockchainPublicKeysServer blockchainPublicKeysServer, int verifiedBlockchainServerPort, int PID) {
         this.PID = PID;
-        this.blockchainVerifierServer = blockchainVerifier;
+        this.blockchainVerifierServer = new BlockchainVerifierServer(PID, blockchainPublicKeysServer);
 
         try {
             this.pubPrivKey = GenerateKeyPair();
@@ -235,7 +234,7 @@ class UnverifiedBlockchainServer extends Thread {
                 MulticastKeys();
             }
             else {
-                blockchainVerifierServer.AddBlock(event);
+                this.blockchainVerifierServer.AddBlock(event);
             }
         }
     }
@@ -368,8 +367,6 @@ class UnverifiedBlockchainServer extends Thread {
                 System.out.println("MulticastBlock: Unable to send packet");
             }
         }
-
-        //System.out.println(XMLblock);
     }
 
     // source for UDP multicasting: https://www.baeldung.com/java-broadcast-multicast
@@ -458,21 +455,24 @@ public class Blockchain {
         System.out.println("Server PIDs: " + blockchainPublicKeysServerPort + " " + unverifiedBlockchainServerPort + " " + verifiedBlockchainServerPort);
 
         BlockchainPublicKeysServer blockchainPublicKeys = new BlockchainPublicKeysServer(blockchainPublicKeysServerPort, PID);
-        BlockchainVerifierServer blockchainVerifier = new BlockchainVerifierServer(verifiedBlockchainServerPort, PID, blockchainPublicKeys);
+        BlockchainVerifierServer blockchainVerifier = new BlockchainVerifierServer(PID, blockchainPublicKeys);
         //BlockchainVerifierServer blockchainVerifier = new BlockchainVerifierServer();
-        UnverifiedBlockchainServer unverifiedBlockchainServer = new UnverifiedBlockchainServer(unverifiedBlockchainServerPort, PID, blockchainVerifier);
+        UnverifiedBlockchainServer unverifiedBlockchainServer = new UnverifiedBlockchainServer(unverifiedBlockchainServerPort, blockchainPublicKeys, verifiedBlockchainServerPort, PID);
 
-        //Thread keysThread = new Thread(blockchainPublicKeys);
+        Thread keysThread = new Thread(blockchainPublicKeys);
         Thread unverifiedThread = new Thread(unverifiedBlockchainServer);
         //Thread verifiedThread = new Thread(blockchainVerifier);
 
-        //keysThread.start();
+        keysThread.start();
         unverifiedThread.start();
         //verifiedThread.start();
 
         // loop until all public keys have been collected
         // once all servers have it, continue with console commands
-        //while (!(blockchainPublicKeys.getHashSize() == 3)) System.out.flush();
+        while (!(blockchainPublicKeys.getHashSize() == 3)){
+            System.out.flush();
+            break;
+        }
 
         BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
         String userString;
