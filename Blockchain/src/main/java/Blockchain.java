@@ -101,7 +101,7 @@ class BlockchainVerifierServer extends Thread {
     BlockchainPublicKeysServer blockchainPublicKeysServer;
     int PID;
     DatagramSocket socket;
-    BlockingQueue<BlockRecord> unverifiedBlocksList;
+    final BlockingQueue<BlockRecord> unverifiedBlocksList;
     LinkedList<BlockRecord> blockchainList;
     ArrayList<String> blockIDList;
 
@@ -166,10 +166,7 @@ class BlockchainVerifierServer extends Thread {
     @Override
     public void run(){
         while (true) {
-            System.out.println(this.blockchainPublicKeysServer.PIDPubKeys.values());
             if(!(unverifiedBlocksList.isEmpty())){
-                System.out.println(this.blockchainPublicKeysServer.PIDPubKeys.values());
-                System.out.println(this.unverifiedBlocksList.size());
                 BlockRecord workingBlock = unverifiedBlocksList.remove();
 
                 // find out who signed the block
@@ -177,7 +174,7 @@ class BlockchainVerifierServer extends Thread {
                 String[] splitPID = workingBlock.getAPID().split(" ");
                 PublicKey getPIDPubKey = this.blockchainPublicKeysServer.getPubKey(splitPID[1]);
                 boolean verifiedSignatureBlockID = this.VerifySignature(workingBlock.getABlockID().getBytes(), getPIDPubKey, decodedBlockSignature);
-                System.out.println("PID: " + PID);
+                System.out.println(verifiedSignatureBlockID);
 
 //                if(!verifiedSignatureBlockID){
 //                    continue;
@@ -328,7 +325,7 @@ class UnverifiedBlockchainServer extends Thread {
                 // sign SHA256string with private key
                 // convert SignedSHA256String to a string and set in BlockRecord
                 String SignedSHA256String = Base64.getEncoder().encodeToString(SignData(SHA256String.getBytes()));
-                newBlockRecord.setASignedBlockUUID(SignedSHA256String);
+                newBlockRecord.setASignedSHA256(SignedSHA256String);
 
                 // entire block is now signed, convert again to XML
                 StringWriter postSW = new StringWriter();
@@ -461,11 +458,11 @@ public class Blockchain {
 
         Thread keysThread = new Thread(blockchainPublicKeys);
         Thread unverifiedThread = new Thread(unverifiedBlockchainServer);
-        //Thread verifiedThread = new Thread(blockchainVerifier);
+        Thread verifierThread = new Thread(blockchainVerifier);
 
         keysThread.start();
         unverifiedThread.start();
-        //verifiedThread.start();
+        verifierThread.start();
 
         // loop until all public keys have been collected
         // once all servers have it, continue with console commands
@@ -605,5 +602,4 @@ class BlockRecord{
     public String getASignedBlockUUID() {return signedBlockUUID;}
     @XmlElement
     public void setASignedBlockUUID(String signedBlockUUID){this.signedBlockUUID = signedBlockUUID;}
-
 }
