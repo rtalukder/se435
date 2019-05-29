@@ -3,10 +3,7 @@
 import com.sun.security.ntlm.Server;
 import org.omg.PortableServer.POA;
 
-import javax.xml.bind.JAXBContext;
-import javax.xml.bind.JAXBException;
-import javax.xml.bind.Marshaller;
-import javax.xml.bind.Unmarshaller;
+import javax.xml.bind.*;
 import javax.xml.bind.annotation.XmlAttribute;
 import javax.xml.bind.annotation.XmlElement;
 import javax.xml.bind.annotation.XmlRootElement;
@@ -98,17 +95,19 @@ class BlockchainPublicKeysServer implements Runnable {
 }
 
 class BlockchainVerifierServer extends Thread {
-    BlockchainPublicKeysServer blockchainPublicKeysServer;
     int PID;
+    KeyPair pubPrivKey;
+    BlockchainPublicKeysServer blockchainPublicKeysServer;
     DatagramSocket socket;
     final BlockingQueue<BlockRecord> unverifiedBlocksList;
     LinkedList<BlockRecord> blockchainList;
     ArrayList<String> blockIDList;
 
     // int blockchainVerifierPort, int PID, BlockchainPublicKeysServer blockchainPublicKeysServer
-    public BlockchainVerifierServer(int PID, BlockchainPublicKeysServer blockchainPublicKeysServer){
-        this.blockchainPublicKeysServer = blockchainPublicKeysServer;
+    public BlockchainVerifierServer(BlockchainPublicKeysServer blockchainPublicKeysServer, int PID, KeyPair pubPrivKey){
         this.PID = PID;
+        this.pubPrivKey = pubPrivKey;
+        this.blockchainPublicKeysServer = blockchainPublicKeysServer;
         this.unverifiedBlocksList = new LinkedBlockingQueue<>();
         this.blockchainList = new LinkedList<>();
         this.blockIDList = new ArrayList<>();
@@ -117,7 +116,7 @@ class BlockchainVerifierServer extends Thread {
         BlockRecord dummyRecord = new BlockRecord();
         dummyRecord.setABlockID("236e1834-5a02-46a3-974e-58e90bf87d2b");
         dummyRecord.setASHA256String("77df263f49123356d28a4a8715d25bf5b980beeeb503cab46ea61ac9f3320eda");
-        dummyRecord.setABlockID("0");
+        dummyRecord.setABlockIndex("0");
         this.blockchainList.add(dummyRecord);
     }
 
@@ -163,6 +162,15 @@ class BlockchainVerifierServer extends Thread {
         }
     }
 
+    // utility function from Professor Elliott
+    // signs data with private key
+    public byte[] SignData(byte[] data) throws Exception {
+        Signature signer = Signature.getInstance("SHA1withRSA");
+        signer.initSign(this.pubPrivKey.getPrivate());
+        signer.update(data);
+        return (signer.sign());
+    }
+
     @Override
     public void run(){
         while (true) {
@@ -174,15 +182,120 @@ class BlockchainVerifierServer extends Thread {
                 String[] splitPID = workingBlock.getAPID().split(" ");
                 PublicKey getPIDPubKey = this.blockchainPublicKeysServer.getPubKey(splitPID[1]);
                 boolean verifiedSignatureBlockID = this.VerifySignature(workingBlock.getABlockID().getBytes(), getPIDPubKey, decodedBlockSignature);
-                System.out.println(verifiedSignatureBlockID);
 
-//                if(!verifiedSignatureBlockID){
-//                    continue;
-//                }
+                if(!verifiedSignatureBlockID){
+                    continue;
+                }
 
+                // get last blockID in block chain in order to update workingBlocks blockID
+                BlockRecord lastBCrecord = this.blockchainList.getLast();
+                Integer lastBlockIndex = Integer.valueOf(lastBCrecord.getABlockIndex());
+                int workingBlockIndex = (lastBlockIndex + 1);
+                workingBlock.setABlockIndex(String.valueOf(workingBlockIndex));
+
+                String lastBlockSHA256 = lastBCrecord.getASHA256String();
+                String workingBlockID = workingBlock.getABlockID();
+
+                try {
+                    // utility code from Professor Elliott
+                    JAXBContext jaxbContext = JAXBContext.newInstance(BlockRecord.class);
+                    Marshaller jaxbMarshaller = jaxbContext.createMarshaller();
+                    // CDE Make the output pretty printed:
+                    jaxbMarshaller.setProperty(Marshaller.JAXB_FORMATTED_OUTPUT, true);
+
+                    // create random seed to set for the current block being verified
+                    Random randomBytes = new Random();
+                    byte[] randomSeedBytes = new byte[256];
+
+                    while (true){
+                        StringWriter preSW = new StringWriter();
+                        // random bytes added to byte array
+                        randomBytes.nextBytes(randomSeedBytes);
+
+                        jaxbMarshaller.marshal(workingBlock, preSW);
+                        String workingBlockXML = preSW.toString();
+
+                        MessageDigest md = MessageDigest.getInstance("SHA-256");
+                        // current XML data + previous SHA256 string
+                        md.update((workingBlockXML + lastBlockSHA256).getBytes());
+
+                        // CDE: Convert the byte[] to hex format. THIS IS NOT VERFIED CODE:
+                        // utility code from Professor Elliott
+                        byte[] byteData = md.digest();
+//                        StringBuffer sb = new StringBuffer();
+//
+//                        for (int i = 0; i < 4; i++) {
+//                            sb.append(Integer.toBinaryString((byteData[i] & 0xff) + 0x100).substring(1));
+//                        }
+//                        System.out.println(sb);
+
+                        String stringOut = DatatypeConverter.printHexBinary(randomSeedBytes); // Turn into a string of hex values
+                        System.out.println("Hash is: " + stringOut);
+                        int work = Integer.parseInt(stringOut.substring(0,4),16); // Between 0000 (0) and FFFF (65535)
+                        System.out.println("First 16 bits in Hex and Decimal: " + stringOut.substring(0,4) +" and " + work);
+
+                        //System.out.println(sb.toString());
+                        //Integer work = Integer.parseInt(sb.toString(), 2);
+                        //System.out.println(work);
+                        if (!(work < 20480)){
+                            System.out.println("not solved");
+                        }
+                        if (work < 20480){
+                            System.out.println("solved");
+                            // CDE: Convert the byte[] to hex format. THIS IS NOT VERFIED CODE:
+                            // utility code from Professor Elliott
+                            StringBuffer SHAstringBuffer = new StringBuffer();
+                            for (int i = 0; i < byteData.length; i++) {
+                                SHAstringBuffer.append(Integer.toString((byteData[i] & 0xff) + 0x100, 16).substring(1));
+                            }
+
+                            // block will now be signed with private key of the current PID
+                            // convert string buffer to a string and set in BlockRecord
+                            String SHA256String = SHAstringBuffer.toString();
+                            String SignedSHA256String = Base64.getEncoder().encodeToString(SignData(SHA256String.getBytes()));
+                            workingBlock.setASHA256String(SHA256String);
+                            workingBlock.setASignedSHA256(SignedSHA256String);
+                            workingBlock.setAVerificationProcessID(String.valueOf(this.PID));
+                            // timestamp of when data was created
+                            // utility code from Professor Elliott
+                            Date date = new Date();
+                            String timeStamp = String.format("%1$s %2$tF.%2$tT", "", date);
+                            workingBlock.setATimestamp(timeStamp + "." + this.PID);
+                            this.blockchainList.add(workingBlock);
+                            MulticastVerifiedBlock();
+                            break;
+                        }
+                    }
+                }
+                catch (Exception exception) {
+                    exception.printStackTrace();
+                    System.out.println("BlockchainVerifierServer: Running thread exception thrown");
+                }
             }
         }
+    }
 
+    // source for UDP multicasting: https://www.baeldung.com/java-broadcast-multicast
+    public void MulticastVerifiedBlock(String XMLblock){
+        int[] verfiedBlockchainPorts = {4930, 4931, 4932};
+
+        InetAddress hostname = null;
+        try {
+            hostname = InetAddress.getLocalHost();
+        }
+        catch (UnknownHostException exception){
+            System.out.println("MulticastBlock: Unknown host.");
+        }
+
+        for (int port : verfiedBlockchainPorts) {
+            DatagramPacket packet = new DatagramPacket(XMLblock.getBytes(), (XMLblock.getBytes()).length, hostname, port);
+            try {
+                this.socket.send(packet);
+            }
+            catch (IOException exception){
+                System.out.println("MulticastBlock: Unable to send packet");
+            }
+        }
     }
 }
 
@@ -192,14 +305,14 @@ class UnverifiedBlockchainServer extends Thread {
     KeyPair pubPrivKey;
     int PID;
 
-    public UnverifiedBlockchainServer(int unverifiedBlockchainServerPort, BlockchainPublicKeysServer blockchainPublicKeysServer, int verifiedBlockchainServerPort, int PID) {
+    public UnverifiedBlockchainServer(int unverifiedBlockchainServerPort, BlockchainPublicKeysServer blockchainPublicKeysServer, int PID) {
         this.PID = PID;
-        this.blockchainVerifierServer = new BlockchainVerifierServer(PID, blockchainPublicKeysServer);
 
         try {
             this.pubPrivKey = GenerateKeyPair();
             DatagramSocket datagramSocket = new DatagramSocket(unverifiedBlockchainServerPort);
             this.socket = datagramSocket;
+            this.blockchainVerifierServer = new BlockchainVerifierServer(blockchainPublicKeysServer, this.PID, this.pubPrivKey);
         }
         catch (Exception exception){
             System.out.println("UnverifiedBlockchainServer: Exception caught");
@@ -332,8 +445,10 @@ class UnverifiedBlockchainServer extends Thread {
                 jaxbMarshaller.marshal(newBlockRecord, postSW);
                 String postXMLString = postSW.toString();
 
+                // multicast unverified block to all other open sockets
                 MulticastBlock(postXMLString);
 
+                // increment how many records read by 1
                 BlockRecordCount+=1;
             }
         } catch (Exception exception) {
@@ -452,17 +567,17 @@ public class Blockchain {
         System.out.println("Server PIDs: " + blockchainPublicKeysServerPort + " " + unverifiedBlockchainServerPort + " " + verifiedBlockchainServerPort);
 
         BlockchainPublicKeysServer blockchainPublicKeys = new BlockchainPublicKeysServer(blockchainPublicKeysServerPort, PID);
-        BlockchainVerifierServer blockchainVerifier = new BlockchainVerifierServer(PID, blockchainPublicKeys);
-        //BlockchainVerifierServer blockchainVerifier = new BlockchainVerifierServer();
-        UnverifiedBlockchainServer unverifiedBlockchainServer = new UnverifiedBlockchainServer(unverifiedBlockchainServerPort, blockchainPublicKeys, verifiedBlockchainServerPort, PID);
+        // BlockchainVerifierServer blockchainVerifier = new BlockchainVerifierServer(blockchainPublicKeys, PID, );
+        UnverifiedBlockchainServer unverifiedBlockchainServer = new UnverifiedBlockchainServer(unverifiedBlockchainServerPort, blockchainPublicKeys, PID);
 
         Thread keysThread = new Thread(blockchainPublicKeys);
+        //Thread verifierThread = new Thread(blockchainVerifier);
         Thread unverifiedThread = new Thread(unverifiedBlockchainServer);
-        Thread verifierThread = new Thread(blockchainVerifier);
+
 
         keysThread.start();
         unverifiedThread.start();
-        verifierThread.start();
+        //verifierThread.start();
 
         // loop until all public keys have been collected
         // once all servers have it, continue with console commands
@@ -526,6 +641,7 @@ class BlockRecord{
     String SHA256String;
     String SignedSHA256;
     String BlockID;
+    String BlockIndex;
     String VerificationProcessID;
     String CreatingProcess;
     String PreviousHash;
@@ -602,4 +718,8 @@ class BlockRecord{
     public String getASignedBlockUUID() {return signedBlockUUID;}
     @XmlElement
     public void setASignedBlockUUID(String signedBlockUUID){this.signedBlockUUID = signedBlockUUID;}
+
+    public String getABlockIndex() {return BlockIndex;}
+    @XmlElement
+    public void setABlockIndex(String BlockIndex){this.BlockIndex = BlockIndex;}
 }
