@@ -1,7 +1,7 @@
 package edu.depaul.se435;
 
 /**
- * Class: CSC435 - HostServer
+ * Class: CSC435 - HostServer Assignment
  * Author: Raquib Talukder
  **/
 
